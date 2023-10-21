@@ -1,0 +1,346 @@
+name: Terraform
+
+on:
+  pull_request:
+    branches:
+      - "main"
+      - "develop"
+      - "staging"
+    paths:
+      - "terraform/**"
+  push:
+    branches:
+      - "*"
+    paths:
+      - "terraform/**"
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: 1.4.6
+  TERRAFORM_PATH: terraform
+
+  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+  AWS_REGION: us-east-1
+
+  TF_VAR_assume_role_arn: ${{ secrets.AWS_ROLE_ARN }}
+
+  PLAN_BRANCHES: "main,develop,staging,feat/*,fix/*" # branches for terraform plan
+  APPLY_BRANCHES: "main,develop,staging" # branch for terraform apply
+
+  COMMON_VARFILE: "varfiles/common.tfvars"
+  PROD_VARFILE: "varfiles/develop.tfvars"
+  DEVELOP_VARFILE: "varfiles/develop.tfvars"
+  STAGING_VARFILE: "varfiles/develop.tfvars"
+  DEFAULT_VARFILE: "varfiles/develop.tfvars" # for unspecified branches
+
+  PROD_WORKSPACE: "develop"
+  DEVELOP_WORKSPACE: "develop"
+  STAGING_WORKSPACE: "develop"
+  DEFAULT_WORKSPACE: "develop" # for unspecified branches
+
+jobs:
+  terraform-format-checks:
+    name: Terraform Format Checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      fmt_outcome: ${{ steps.fmt.outcome }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Terraform Format
+        id: fmt
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: terraform fmt -list=true -check=true -recursive
+        continue-on-error: true
+
+  check-branch:
+    runs-on: ubuntu-latest
+    outputs:
+      should_plan: ${{ steps.check.outputs.should_plan }}
+      should_apply: ${{ steps.check.outputs.should_apply }}
+      varfile: ${{ steps.varfile.outputs.varfile }}
+      workspace: ${{ steps.workspace.outputs.workspace }}
+    env:
+      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - id: check
+        run: |
+          check_branch_against_patterns() {
+            local branch="$1"
+            local patterns_str="$2"
+            IFS=',' read -ra patterns <<< "$patterns_str"
+            for pattern in "${patterns[@]}"; do
+              if [[ $branch == $pattern ]]; then
+                echo "true"
+                return
+              fi
+            done
+            echo "false"
+          }
+
+          SHOULD_APPLY=$(check_branch_against_patterns "$BRANCH_NAME" "${{ env.APPLY_BRANCHES }}")
+          SHOULD_PLAN=$(check_branch_against_patterns "$BRANCH_NAME" "${{ env.PLAN_BRANCHES }}")
+
+          echo "should_apply=$SHOULD_APPLY" >> $GITHUB_OUTPUT
+          echo "should_plan=$SHOULD_PLAN" >> $GITHUB_OUTPUT
+
+          echo SHOULD_PLAN: $SHOULD_PLAN
+          echo SHOULD_APPLY: $SHOULD_APPLY
+
+      - name: Set Varfile Based on Branch
+        id: varfile
+        run: |
+          case $BRANCH_NAME in
+            main)
+              echo "varfile=${{ env.PROD_VARFILE }}" >> $GITHUB_OUTPUT
+              ;;
+            develop)
+              echo "varfile=${{ env.DEVELOP_VARFILE }}" >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "varfile=${{ env.STAGING_VARFILE }}" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "varfile=${{ env.DEFAULT_VARFILE }}" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Set Terraform Workspace
+        id: workspace
+        run: |
+          case $BRANCH_NAME in
+            main)
+              echo "workspace=${{ env.PROD_WORKSPACE }}" >> $GITHUB_OUTPUT
+              ;;
+            develop)
+              echo "workspace=${{ env.DEVELOP_WORKSPACE }}" >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "workspace=${{ env.STAGING_WORKSPACE }}" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "workspace=${{ env.DEFAULT_WORKSPACE }}" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+  terraform-plan:
+    if: needs.check-branch.outputs.should_plan == 'true'
+    needs: [terraform-format-checks, check-branch]
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    env:
+      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+      WORKSPACE: "${{ needs.check-branch.outputs.workspace }}"
+      VARFILE: "${{ needs.check-branch.outputs.varfile }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-duration-seconds: 1800
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Setup JQ
+        id: setup-jq
+        run: sudo apt-get install -y jq
+
+      - name: Terraform Init
+        id: init
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: terraform init
+        continue-on-error: true
+
+      - name: Set Terraform Workspace
+        id: set-workspace
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: |
+          echo "Workspace: $WORKSPACE"
+
+          terraform workspace new $WORKSPACE || terraform workspace select $WORKSPACE
+
+      - name: Terraform Validate
+        id: validate
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: |
+          OUTPUT=$(terraform validate -no-color)
+
+          echo $OUTPUT
+
+          echo "output=$OUTPUT" >> $GITHUB_OUTPUT
+
+        continue-on-error: true
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        continue-on-error: true
+        run: |
+          OUTPUT=$(terraform plan -no-color -input=false -var-file=${{ env.COMMON_VARFILE }} -var-file=$VARFILE -out=plan.tfplan)
+          OUTPUT="$(echo "${OUTPUT}" | grep -v "Refreshing state")"
+          OUTPUT="$(echo -n "$OUTPUT" | tail -c 59000)"
+          OUTPUT=$(echo "$OUTPUT" | jq -R -s -c .)
+
+          echo "output=$OUTPUT" >> $GITHUB_OUTPUT
+
+          terraform show plan.tfplan
+
+      - name: Upload Terraform Plan as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-plan
+          path: ${{ env.TERRAFORM_PATH }}/plan.tfplan
+
+      - name: Setup Graphviz
+        id: setup-graphviz
+        uses: ts-graphviz/setup-graphviz@v1
+
+      - name: Generate Terraform Graph
+        id: graph
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: |
+          terraform graph -draw-cycles -type=plan-refresh-only -plan=plan.tfplan | dot -Tsvg > graph.svg
+
+      - name: Upload Terraform Graph as Artifact
+        id: upload-graph
+        uses: actions/upload-artifact@v3
+        with:
+          name: graph.svg
+          path: ${{ env.TERRAFORM_PATH }}/graph.svg
+
+      - name: Pull Request Comment
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "${{ steps.plan.outputs.output }}"
+          VALIDATE: "${{ steps.validate.outputs.output }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const planOutput = JSON.parse(process.env.PLAN);
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            })
+            const botComment = comments.find(comment => {
+              return comment.user.type === 'Bot' && comment.body.includes('Terraform Format and Style')
+            })
+
+            const output = `#### Terraform Workspace 🏗️ \`${{ needs.check-branch.outputs.workspace }}\`
+            #### Terraform Format and Style 🖌 \`${{ needs.terraform-format-checks.outputs.fmt_outcome }}\`
+            #### Terraform Initialization ⚙️ \`${{ steps.init.outcome }}\`
+            #### Terraform Validation 🤖 \`${{ steps.validate.outcome }}\`
+            <details><summary>Validation Output</summary>
+
+            \`\`\`\n
+            ${process.env.VALIDATE}
+            \`\`\`
+
+            </details>
+
+            #### Terraform Plan 📖 \`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform\n
+            ${planOutput}
+            \`\`\`
+
+            </details>
+
+            [Download](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) plan graph (Artifacts/graph.svg)`;
+
+            if (botComment) {
+              github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: output
+              })
+            } else {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: output
+              })
+            }
+
+      - name: Terraform Status
+        if: steps.init.outcome == 'failure' || steps.plan.outcome == 'failure'
+        run: exit 1
+
+  terraform-apply:
+    if: needs.check-branch.outputs.should_apply == 'true'
+    needs: [terraform-format-checks, terraform-plan, check-branch]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      WORKSPACE: "${{ needs.check-branch.outputs.workspace }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-duration-seconds: 3600
+
+      - name: Download Terraform Plan Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: terraform-plan
+          path: ${{ env.TERRAFORM_PATH }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Init
+        id: init
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: terraform init
+        continue-on-error: true
+
+      - name: Set Terraform Workspace
+        id: set-workspace
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: |
+          echo "Workspace: $WORKSPACE"
+
+          terraform workspace new $WORKSPACE || terraform workspace select $WORKSPACE
+
+      - name: Terraform Apply
+        id: apply
+        working-directory: ${{ env.TERRAFORM_PATH }}
+        run: terraform apply "plan.tfplan"

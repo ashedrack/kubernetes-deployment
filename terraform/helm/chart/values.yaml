@@ -1,0 +1,37 @@
+deployment:
+  replicaCount: 1
+  image:
+    repository: nginx
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 256m
+      memory: 512Mi
+    limits:
+      cpu: 512m
+      memory: 256Mi
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    path: /
+  containerPort: 80
+
+service:
+  port: 80
+  type: ClusterIP
+  annotations: {}
+
+# INGRESS
+ingress:
+  enabled: false
+  ingressClassName: alb
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: public-ip
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+  hosts:
+    - host: graylog.example.com
+      paths:
+        - /*
+  tls: []

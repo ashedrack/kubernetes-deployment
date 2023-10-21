@@ -1,0 +1,40 @@
+version: "3"
+services:
+  go-application:
+    build:
+      context: ./.
+    container_name: go-application
+    image: go-application
+    ports:
+      - "80:5000"
+    networks:
+      - openly-network
+
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yaml:/etc/prometheus/prometheus.yml
+    #  - ./.data/prometheus:/prometheus  # Bind mount for Prometheus data
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    networks:
+      - openly-network
+
+  grafana:
+    image: grafana/grafana:10.0.5
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: secret
+    volumes:
+      - ./configs/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./configs/dashboard_config.yaml:/etc/grafana/provisioning/dashboards/dashboard_config.yaml
+      - ./configs/go_app_dashboard.json:/etc/grafana/provisioning/dashboards/go_app_dashboard.json
+    networks:
+      - openly-network
+networks:
+  openly-network:
+    driver: bridge

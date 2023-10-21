@@ -1,0 +1,392 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": "-- Grafana --",
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": false,
+    "gnetId": null,
+    "graphTooltip": 1,
+    "hideControls": false,
+    "id": null,
+    "links": [],
+    "panels": [
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 12,
+                "h": 9
+            },
+            "id": 1,
+            "options": {},
+            "pluginVersion": "7.5.5",
+            "targets": [
+                {
+                    "expr": "sum(requests_total) by (code, method)",
+                    "legendFormat": "{{method}} {{code}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Processed Requests by Status Code and Method",
+            "type": "graph",
+            "description": "Shows the total number of requests processed by status code and method over time."
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "req/s"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 9,
+                "w": 12,
+                "h": 9
+            },
+            "id": 2,
+            "options": {},
+            "pluginVersion": "7.5.5",
+            "targets": [
+                {
+                    "expr": "sum(rate(requests_total[1m])) by (code, method)",
+                    "legendFormat": "{{method}} {{code}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Requests Per Second (RPS) by Status Code and Method",
+            "type": "graph",
+            "description": "Shows the number of requests processed every second by status code and method."
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "breakPoint": "50%",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.75
+                            },
+                            {
+                                "color": "red",
+                                "value": 1.5
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 6,
+                "h": 9
+            },
+            "id": 3,
+            "options": {
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.50, sum(rate(request_duration_seconds_bucket{method=\"GET\"}[5m])) by (le))",
+                    "legendFormat": "Median",
+                    "refId": "A"
+                }
+            ],
+            "timeRegions": [],
+            "title": "Request Duration (Median)",
+            "type": "gauge"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "breakPoint": "50%",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.75
+                            },
+                            {
+                                "color": "red",
+                                "value": 1.5
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 0,
+                "w": 6,
+                "h": 9
+            },
+            "id": 4,
+            "options": {
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.75, sum(rate(request_duration_seconds_bucket{method=\"GET\"}[5m])) by (le))",
+                    "legendFormat": "75th Percentile",
+                    "refId": "A"
+                }
+            ],
+            "timeRegions": [],
+            "title": "Request Duration (75th Percentile)",
+            "type": "gauge"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "breakPoint": "50%",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.75
+                            },
+                            {
+                                "color": "red",
+                                "value": 1.5
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 9,
+                "w": 6,
+                "h": 9
+            },
+            "id": 5,
+            "options": {
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket{method=\"GET\"}[5m])) by (le))",
+                    "legendFormat": "95th Percentile",
+                    "refId": "A"
+                }
+            ],
+            "timeRegions": [],
+            "title": "Request Duration (95th percentile)",
+            "type": "gauge"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "breakPoint": "50%",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.75
+                            },
+                            {
+                                "color": "red",
+                                "value": 1.5
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 9,
+                "w": 6,
+                "h": 9
+            },
+            "id": 6,
+            "options": {
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.99, sum(rate(request_duration_seconds_bucket{method=\"GET\"}[5m])) by (le))",
+                    "legendFormat": "99th Percentile",
+                    "refId": "A"
+                }
+            ],
+            "title": "Request Duration (99th percentile)",
+            "type": "gauge"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 18,
+                "w": 12,
+                "h": 9
+            },
+            "id": 8,
+            "options": {},
+            "pluginVersion": "7.5.5",
+            "targets": [
+                {
+                    "expr": "sum(requests_total{code=\"500\"})",
+                    "legendFormat": "Errors",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Errors Observed",
+            "type": "graph",
+            "description": "Shows the total number of errors observed over time."
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short"
+                }
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 18,
+                "w": 12,
+                "h": 9
+            },
+            "id": 9,
+            "options": {},
+            "pluginVersion": "7.5.5",
+            "targets": [
+                {
+                    "expr": "in_flight_requests",
+                    "legendFormat": "In-flight Requests",
+                    "refId": "A"
+                }
+            ],
+            "title": "In-flight HTTP Requests",
+            "type": "graph",
+            "description": "Shows the number of in-flight HTTP requests over time."
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "#5BC0DE",
+                                "value": null
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 30,
+                "w": 24,
+                "h": 12
+            },
+            "id": 7,
+            "options": {},
+            "pluginVersion": "7.5.5",
+            "targets": [
+                {
+                    "expr": "sum(request_duration_seconds_bucket{method=\"GET\"}) by (le)",
+                    "legendFormat": "{{le}} seconds",
+                    "refId": "A"
+                }
+            ],
+            "title": "Request Count Distribution",
+            "type": "bargauge"
+        }
+    ],
+    "schemaVersion": 16,
+    "style": "dark",
+    "tags": [],
+    "templating": {
+        "list": []
+    },
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timepicker": {
+        "refresh_intervals": [
+            "5s",
+            "10s",
+            "30s",
+            "1m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "1d"
+        ],
+        "time_options": [
+            "5m",
+            "15m",
+            "1h",
+            "6h",
+            "12h",
+            "24h",
+            "2d",
+            "7d",
+            "30d"
+        ]
+    },
+    "timezone": "",
+    "title": "Go WebApp Monitoring",
+    "uid": null,
+    "version": 1
+}
